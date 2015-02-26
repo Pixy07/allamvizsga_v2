@@ -1,35 +1,36 @@
-﻿Build started 2/15/2015 8:29:56 PM.
-     1>Project "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Allamvizsga_v2\Allamvizsga_v2.vcxproj" on node 2 (Build target(s)).
-     1>AddCudaCompileDeps:
-         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\cl.exe /E /nologo /showIncludes /TP /D__CUDACC__ /DWIN32 /D_DEBUG /D_CONSOLE /D_MBCS /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin" /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" /I. /FIcuda_runtime.h /c "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Allamvizsga_v2\kernel.cu" 
+﻿Build started 2/26/2015 7:12:03 PM.
+     1>Project "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\Allamvizsga_v2.vcxproj" on node 2 (Rebuild target(s)).
+     1>CudaClean:
+         cmd.exe /C "C:\Users\Cuda Programming\AppData\Local\Temp\tmp0569da596df34e4db0c88ef1e93f13b3.cmd"
+         "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\nvcc.exe" -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin"  -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include"  -G   --keep-dir Debug -maxrregcount=0  --machine 32 --compile   -g   -DWIN32 -D_DEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /Od /Zi /RTC1 /MDd  " -o Debug\kernel.cu.obj "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\kernel.cu" -clean
+         
+         C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\nvcc.exe" -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin"  -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include"  -G   --keep-dir Debug -maxrregcount=0  --machine 32 --compile   -g   -DWIN32 -D_DEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /Od /Zi /RTC1 /MDd  " -o Debug\kernel.cu.obj "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\kernel.cu" -clean 
+         kernel.cu
+       AddCudaCompileDeps:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\cl.exe /E /nologo /showIncludes /TP /D__CUDACC__ /DWIN32 /D_DEBUG /D_CONSOLE /D_MBCS /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin" /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" /I. /FIcuda_runtime.h /c "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\kernel.cu" 
        CudaBuild:
          Compiling CUDA source file kernel.cu...
-         cmd.exe /C "C:\Users\Cuda Programming\AppData\Local\Temp\tmpd5ced0e08b8b4917bb4b8a40f37685af.cmd"
-         "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\nvcc.exe" -gencode=arch=compute_20,code=\"sm_20,compute_20\" --use-local-env --cl-version 2013 -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin"  -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include"  -G   --keep-dir Debug -maxrregcount=0  --machine 32 --compile -cudart static  -g   -DWIN32 -D_DEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /Od /Zi /RTC1 /MDd  " -o Debug\kernel.cu.obj "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Allamvizsga_v2\kernel.cu"
+         cmd.exe /C "C:\Users\Cuda Programming\AppData\Local\Temp\tmpefdcb89ec8eb4ebb8e6d5efdcc1241cd.cmd"
+         "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\nvcc.exe" -gencode=arch=compute_20,code=\"sm_20,compute_20\" --use-local-env --cl-version 2013 -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin"  -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include"  -G   --keep-dir Debug -maxrregcount=0  --machine 32 --compile -cudart static  -g   -DWIN32 -D_DEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /Od /Zi /RTC1 /MDd  " -o Debug\kernel.cu.obj "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\kernel.cu"
          
-         C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Allamvizsga_v2>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\nvcc.exe" -gencode=arch=compute_20,code=\"sm_20,compute_20\" --use-local-env --cl-version 2013 -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin"  -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include"  -G   --keep-dir Debug -maxrregcount=0  --machine 32 --compile -cudart static  -g   -DWIN32 -D_DEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /Od /Zi /RTC1 /MDd  " -o Debug\kernel.cu.obj "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Allamvizsga_v2\kernel.cu" 
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(190): warning : variable "hC" was declared but never referenced
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(231): warning : variable "C" was set but never used
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(233): warning : variable "m" was declared but never referenced
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(190): warning : variable "hC" was declared but never referenced
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(231): warning : variable "C" was set but never used
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(233): warning : variable "m" was declared but never referenced
+         C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\nvcc.exe" -gencode=arch=compute_20,code=\"sm_20,compute_20\" --use-local-env --cl-version 2013 -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin"  -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include"  -G   --keep-dir Debug -maxrregcount=0  --machine 32 --compile -cudart static  -g   -DWIN32 -D_DEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /Od /Zi /RTC1 /MDd  " -o Debug\kernel.cu.obj "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\kernel.cu" 
+     1>C:/Users/Cuda Programming/Desktop/allamvizsga/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(126): warning : variable "hC" was declared but never referenced
+     1>C:/Users/Cuda Programming/Desktop/allamvizsga/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(126): warning : variable "hC" was declared but never referenced
          kernel.cu
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(190): warning C4101: 'hC' : unreferenced local variable
-     1>C:/Users/Cuda Programming/Desktop/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(233): warning C4101: 'm' : unreferenced local variable
+     1>C:/Users/Cuda Programming/Desktop/allamvizsga/Allamvizsga_v2/Allamvizsga_v2/kernel.cu(126): warning C4101: 'hC' : unreferenced local variable
        Link:
-         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\Allamvizsga_v2.exe" /INCREMENTAL /NOLOGO /LIBPATH:"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\lib\Win32" cudart.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\Allamvizsga_v2.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\Allamvizsga_v2.lib" /MACHINE:X86 Debug\kernel.cu.obj
-         Allamvizsga_v2.vcxproj -> C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\Allamvizsga_v2.exe
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\Allamvizsga_v2.exe" /INCREMENTAL /NOLOGO /LIBPATH:"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\lib\Win32" cudart.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\Allamvizsga_v2.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\Allamvizsga_v2.lib" /MACHINE:X86 Debug\kernel.cu.obj
+         Allamvizsga_v2.vcxproj -> C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\Allamvizsga_v2.exe
        PostBuildEvent:
-         echo copy "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart*.dll" "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\"
-         copy "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart*.dll" "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\"
+         echo copy "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart*.dll" "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\"
+         copy "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart*.dll" "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\"
          :VCEnd
-         copy "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart*.dll" "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Debug\"
+         copy "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart*.dll" "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Debug\"
          C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart32_65.dll
          C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\bin\cudart64_65.dll
                  2 file(s) copied.
-     1>Done Building Project "C:\Users\Cuda Programming\Desktop\Allamvizsga_v2\Allamvizsga_v2\Allamvizsga_v2.vcxproj" (Build target(s)).
+     1>Done Building Project "C:\Users\Cuda Programming\Desktop\allamvizsga\Allamvizsga_v2\Allamvizsga_v2\Allamvizsga_v2.vcxproj" (Rebuild target(s)).
 
 Build succeeded.
 
-Time Elapsed 00:00:11.54
+Time Elapsed 00:00:10.10

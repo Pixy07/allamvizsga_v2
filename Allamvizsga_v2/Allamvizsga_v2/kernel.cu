@@ -12,34 +12,26 @@ using namespace std;
 #define BLOCK_SIZE 256
 float *hA;
 //#define infRate 1.6
-__global__ void gpuMM2(float *A, float *C, int N)
+__global__ void expand(float *A, float *C, int N)
 {
 	int row = blockIdx.y*blockDim.y + threadIdx.y;
 	int col = blockIdx.x*blockDim.x + threadIdx.x;
 	float sum = 0.0f;
-	while (row < N && col < N) {
-		for (int n = 0; n < N / 2; ++n)
+
+		for (int n = 0; n < N; ++n)
 			sum += A[row*N + n] * A[n*N + col];
 		C[row*N + col] = sum;
-		row += blockDim.y * gridDim.y;
-		col += blockDim.x * gridDim.x;
-	}
-
-
-
 }
 __global__ void normalize2(int N, float *hA)
 {
 
-	int row = blockIdx.x*blockDim.y + threadIdx.x;
-	while (row < N) {
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+	
 		double sum = 0;
 		for (int n = 0; n < N; ++n)
 			sum += hA[row*N + n];
 		for (int n = 0; n < N; ++n)
-			hA[row*N + n] = hA[row*N + n] / sum;
-		row += blockDim.x * gridDim.x;
-	}
+			hA[row*N + n] = hA[row*N + n] / sum;	
 
 }
 
@@ -48,8 +40,7 @@ __global__ void symmetrize2(int N, float *hA)
 {
 	int row = blockIdx.y*blockDim.y + threadIdx.y;
 	int col = blockIdx.x*blockDim.x + threadIdx.x;
-	float newVal;
-	while (row < N && col<N) {
+	float newVal;	
 		if (row>col)
 		{
 			newVal = sqrt(hA[row*N + col] * hA[col*N + row]);
@@ -57,9 +48,6 @@ __global__ void symmetrize2(int N, float *hA)
 			hA[row*N + col] = newVal;
 			hA[col*N + row] = newVal;
 		}
-		row += blockDim.y * gridDim.y;
-		col += blockDim.x * gridDim.x;
-	}
 
 }
 
@@ -67,14 +55,10 @@ __global__ void symmetrize2(int N, float *hA)
 
 __global__ void inflate2(int N, float *hA)
 {
-	float infRate = 3.3;
+	float infRate = 1.5;
 	int row = blockIdx.y*blockDim.y + threadIdx.y;
 	int col = blockIdx.x*blockDim.x + threadIdx.x;
-	while (row < N && col < N) {
-		hA[row*N + col] = pow(hA[row*N + col], infRate);
-		row += blockDim.y * gridDim.y;
-		col += blockDim.x * gridDim.x;
-	}
+	hA[row*N + col] = pow(hA[row*N + col], infRate);
 
 }
 
@@ -174,7 +158,7 @@ int main(int argc, char *argv[])
 	dim3 norm_b(q, 1);
 	dim3 norm_t(256, 1);
 
-	int count = 50;
+	int count = 5;
 	HANDLE_ERROR(cudaFree(dA));
 	HANDLE_ERROR(cudaMalloc(&dA, size));
 	HANDLE_ERROR(cudaMemcpy(dA, hA, size, cudaMemcpyHostToDevice));
@@ -186,28 +170,28 @@ int main(int argc, char *argv[])
 		count--;
 
 		inflate2 << <inf_b, inf_t >> >(N, dA);
-
+		HANDLE_ERROR(cudaDeviceSynchronize());
 		normalize2 << <norm_b, norm_t >> >(N, dA);
-
+		cudaDeviceSynchronize();
 		symmetrize2 << <inf_b, inf_t >> >(N, dA);
-
+		cudaDeviceSynchronize();
 		normalize2 << <norm_b, norm_t >> >(N, dA);
-
+		cudaDeviceSynchronize();
 		symmetrize2 << <inf_b, inf_t >> >(N, dA);
-
+		cudaDeviceSynchronize();
 		normalize2 << <norm_b, norm_t >> >(N, dA);
-
-		gpuMM2 << <inf_b, inf_t >> >(dA, dC, N);
-
+		cudaDeviceSynchronize();
+		expand << <inf_b, inf_t >> >(dA, dC, N);
+		cudaDeviceSynchronize();
 		cudaMemcpy(dA, dC, size, cudaMemcpyDeviceToDevice);
 		/*writer(N,C,dA,size);
 		cout <<"in cikle:";
 		cin>>m;
 		if (m==0) break;*/string str;          //The string
 		ostringstream temp;  //temp as in temporary
-		temp << 50 - count;
+		temp << 5 - count;
 		str = temp.str();
-		cudaMemcpy(hA, dA, 1024 * 1024, cudaMemcpyDeviceToHost);
+		HANDLE_ERROR(cudaMemcpy(hA, dA, 1024 * 1024, cudaMemcpyDeviceToHost));
 		filename = str;
 		filename += ".txt";
 		filecreator(filename, hA);
@@ -227,6 +211,5 @@ int main(int argc, char *argv[])
 
 	HANDLE_ERROR(cudaFree(dC));
 
-
-
 }
+
