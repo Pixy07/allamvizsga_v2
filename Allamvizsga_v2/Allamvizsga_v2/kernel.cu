@@ -88,15 +88,41 @@ void LoadProteinMatrix(string fname)
 	ProtNR = o;
 	protein = (int*)malloc(ProtNR * sizeof(int));
 	count += fread(protein, sizeof(int), ProtNR, F);
+	ProtNR = 895;
+	int extendedProtNr = 0;
+	if (ProtNR % 256 != 0)
+	{
+		for (int i = ProtNR;; ++i)
+		{
+			if (i % 256 == 0)
+			{
+				extendedProtNr = i;
+				break;
+			}
+		}
+	}
+	else extendedProtNr = ProtNR;
+
 	cout << count << endl;
 	count = 0;
 	//hA = (float**)malloc(ProtNR*sizeof(float*));
-	hA = new float[ProtNR*ProtNR];// int prot = ProtNR*ProtNR;
+	hA = new float[extendedProtNr*extendedProtNr];// int prot = ProtNR*ProtNR;
 	count += fread(hA, sizeof(float), ProtNR*ProtNR, F);
+
 	if (count < ProtNR*ProtNR)
 	{
 		cout << "Matrix loading failed.";
 	}
+	for (int nr = ProtNR*ProtNR; nr < extendedProtNr*extendedProtNr; nr++)
+	{
+		if (nr % (extendedProtNr+1) == 0)
+			hA[nr] = 1.0f;
+		else
+			hA[nr] = 0.0f;
+
+	}
+	
+	
 }
 void filecreator(string filename, float *hA)
 {
@@ -119,13 +145,24 @@ int main(int argc, char *argv[])
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-
+	float time;
 	cout << "Matrix size: " << N << "x" << N << endl;
 
 	// Allocate memory on the host
 	float *hC;
 
 	LoadProteinMatrix("1024.pm");
+	int size = N*N*sizeof(float);    // Size of the memory in bytes
+	float *dA, *dC;
+
+	dim3 inf_b(16 * q, 16 * q);
+	dim3 inf_t(16, 16);
+	dim3 norm_b(q, 1);
+	dim3 norm_t(256, 1);
+
+	int count = 50;
+	
+	cudaEventRecord(start, 0);
 	//	filecreator("in.txt", hA);
 	cudaSetDevice(0);
 	/*
@@ -146,25 +183,17 @@ int main(int argc, char *argv[])
 	*/
 
 	// Allocate memory on the device
-	int size = N*N*sizeof(float);    // Size of the memory in bytes
-	float *dA, *dC;
+	
 	HANDLE_ERROR(cudaMalloc(&dA, size));
 	HANDLE_ERROR(cudaMalloc(&dC, size));
 	// Copy matrices from the host to device
 	HANDLE_ERROR(cudaMemcpy(dA, hA, size, cudaMemcpyHostToDevice));
 
-	dim3 inf_b(16 * q, 16 * q);
-	dim3 inf_t(16, 16);
-	dim3 norm_b(q, 1);
-	dim3 norm_t(256, 1);
-
-	int count = 5;
 	HANDLE_ERROR(cudaFree(dA));
 	HANDLE_ERROR(cudaMalloc(&dA, size));
 	HANDLE_ERROR(cudaMemcpy(dA, hA, size, cudaMemcpyHostToDevice));
 	HANDLE_ERROR(cudaMemcpy(dC, hA, size, cudaMemcpyHostToDevice));
-	//writer(N,C,dA,size);
-	HANDLE_ERROR(cudaEventRecord(start, 0));
+	
 	do
 	{
 		count--;
@@ -172,30 +201,31 @@ int main(int argc, char *argv[])
 		inflate2 << <inf_b, inf_t >> >(N, dA);
 		HANDLE_ERROR(cudaDeviceSynchronize());
 		normalize2 << <norm_b, norm_t >> >(N, dA);
-		cudaDeviceSynchronize();
+		HANDLE_ERROR(cudaDeviceSynchronize());
 		symmetrize2 << <inf_b, inf_t >> >(N, dA);
-		cudaDeviceSynchronize();
+		
+		HANDLE_ERROR(cudaDeviceSynchronize());
 		normalize2 << <norm_b, norm_t >> >(N, dA);
-		cudaDeviceSynchronize();
+		HANDLE_ERROR(cudaDeviceSynchronize());
 		symmetrize2 << <inf_b, inf_t >> >(N, dA);
-		cudaDeviceSynchronize();
+		HANDLE_ERROR(cudaDeviceSynchronize());
+		
 		normalize2 << <norm_b, norm_t >> >(N, dA);
-		cudaDeviceSynchronize();
+		HANDLE_ERROR(cudaDeviceSynchronize());
 		expand << <inf_b, inf_t >> >(dA, dC, N);
-		cudaDeviceSynchronize();
-		cudaMemcpy(dA, dC, size, cudaMemcpyDeviceToDevice);
+		HANDLE_ERROR(cudaDeviceSynchronize());
+		HANDLE_ERROR(cudaMemcpy(dA, dC, size, cudaMemcpyDeviceToDevice));
 		/*writer(N,C,dA,size);
 		cout <<"in cikle:";
 		cin>>m;
-		if (m==0) break;*/string str;          //The string
-		ostringstream temp;  //temp as in temporary
-		temp << 5 - count;
-		str = temp.str();
-		HANDLE_ERROR(cudaMemcpy(hA, dA, 1024 * 1024, cudaMemcpyDeviceToHost));
-		filename = str;
-		filename += ".txt";
-		filecreator(filename, hA);
-
+		if (m==0) break;*///string str;          //The string
+		//ostringstream temp;  //temp as in temporary
+		//temp << 50 - count;
+		//str = temp.str();
+		//HANDLE_ERROR(cudaMemcpy(hA, dA, size, cudaMemcpyDeviceToHost));
+		//filename = str;
+		//filename += ".txt";
+		//filecreator(filename, hA);
 	} while (count >= 0);
 	//writer(N,C,dA,size);
 	HANDLE_ERROR(cudaEventRecord(stop, 0)); // Trigger Stop event
@@ -210,6 +240,6 @@ int main(int argc, char *argv[])
 	HANDLE_ERROR(cudaFree(dA));
 
 	HANDLE_ERROR(cudaFree(dC));
-
+	return 0;
 }
 
