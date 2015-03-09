@@ -1,245 +1,590 @@
+#include "windows.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include <time.h>
-#include <iostream>
 #include <stdio.h>
-#include <stdlib.h>
 #include <conio.h>
-#include "handle_error.h"
-#include <fstream>
-#include <sstream>
-using namespace std;
-#define BLOCK_SIZE 256
-float *hA;
-//#define infRate 1.6
-__global__ void expand(float *A, float *C, int N)
-{
-	int row = blockIdx.y*blockDim.y + threadIdx.y;
-	int col = blockIdx.x*blockDim.x + threadIdx.x;
-	float sum = 0.0f;
+#include <stdlib.h>
+#include "math.h"
 
-		for (int n = 0; n < N; ++n)
-			sum += A[row*N + n] * A[n*N + col];
-		C[row*N + col] = sum;
-}
-__global__ void normalize2(int N, float *hA)
-{
+//#include "sslc.h"
+const int KETSZAZOTVENHAT = 256;
 
-	int row = blockIdx.x*blockDim.x + threadIdx.x;
+struct NonZeroElement
+{
+	int row;
+	int col;
+	short value;
+};
+
+struct Leaf
+{
+	int klass;
+	int fold;
+	int super;
+	int family;
+	int first;
+	int last;
+};
+
+struct SSMitem
+{
+	int nrNZ;
+	int currNZbuffsize;
+	float* NonZero_sij;
+	float* NonZero_tij;
+	int* NonZero_col;
+	int* nrNZinrow;
+	int* rowNZheads;
+};
+
+
+
+// global variables
+	float infRate;
+	float eps;
+	int i,j,k;
+	int nrProt;
+
+	// normalizacio soran a sorok osszegeit tartalmazo tomb
+	float* rowSum;
+
+	// egyetlen kiteritett nem ritka sor a matrixbol, amit az expansion szamol kicurr_NZbuffsize
+	// ebbol annyi db kell, ahany szalon szamolunk, pl 256 vagy tobb
+	float* fleto_matyi;
 	
-		double sum = 0;
-		for (int n = 0; n < N; ++n)
-			sum += hA[row*N + n];
-		for (int n = 0; n < N; ++n)
-			hA[row*N + n] = hA[row*N + n] / sum;	
+	// ketto db ritka matrix struktura
+	//SSMitem current;
+	//SSMitem future;
 
+	int* init_nrNZ;
+	int* nrNZ;
+//	int curr_nrNZ;
+//	int curr_NZbuffsize;
+	float* curr_NonZero_sij;
+	int* curr_NonZero_tij;
+	int* curr_NonZero_col;
+	int* curr_nrNZinrow;
+	int* curr_rowNZheads;
+
+//	int future_nrNZ;
+//	int future_NZbuffsize;
+	float* future_NonZero_sij;
+	int* future_NonZero_col;
+	int* future_nrNZinrow;
+	int* future_rowNZheads;
+
+	int* Tiempo; 
+	int* nzStat; 
+
+	LARGE_INTEGER Frekk, Start, End;
+// end of global
+
+void startTime()
+{	
+	QueryPerformanceFrequency(&Frekk);
+	QueryPerformanceCounter(&Start);
 }
 
-
-__global__ void symmetrize2(int N, float *hA)
+int endTime()
 {
-	int row = blockIdx.y*blockDim.y + threadIdx.y;
-	int col = blockIdx.x*blockDim.x + threadIdx.x;
-	float newVal;	
-		if (row>col)
-		{
-			newVal = sqrt(hA[row*N + col] * hA[col*N + row]);
-			if (newVal < 0.0001) newVal = 0;
-			hA[row*N + col] = newVal;
-			hA[col*N + row] = newVal;
-		}
-
+	QueryPerformanceCounter(&End);
+	return (int)(1000.0*(double(End.QuadPart-Start.QuadPart)/double(Frekk.QuadPart)));
 }
 
-
-
-__global__ void inflate2(int N, float *hA)
+void initialize(int nProt, int nNZ, FILE* Fnz, float err, float epsilon, int mbSize)
 {
-	float infRate = 1.5;
-	int row = blockIdx.y*blockDim.y + threadIdx.y;
-	int col = blockIdx.x*blockDim.x + threadIdx.x;
-	hA[row*N + col] = pow(hA[row*N + col], infRate);
+	__int64* nzBuffer = (__int64*)malloc(sizeof(__int64)* 0x40000);
 
-}
+	nrProt = nProt;
+	int extra = (KETSZAZOTVENHAT - (nrProt % KETSZAZOTVENHAT)) % KETSZAZOTVENHAT;
+	nrProt += extra;
+	infRate = err;
+	eps = epsilon;
+	int NZbuffsize;
 
-
-void writer(int N, float* C, float * dA, int size)
-{
-	HANDLE_ERROR(cudaMemcpy(C, dA, size, cudaMemcpyDeviceToHost));
-	for (int row = 0; row < N; row++)
+	if (mbSize>0)
 	{
-		for (int col = 0; col < N; col++){
-			cout << C[row*N + col] << " ";
-		}
-		cout << endl;
+		NZbuffsize = mbSize * 0x100000;
 	}
-}
-void LoadProteinMatrix(string fname)
-{
-	const char* msg = fname.c_str();
-	int o;
-	FILE* F = fopen(msg, "rb");
-	fread(&o, sizeof(int), 1, F);
-	fread(&o, sizeof(int), 1, F);
-	int ProtNR = 0;
-	//job = (SCOP95job*) malloc(sizeof(SCOP95job));
-	int* protein;
-	int count = 0;
-	ProtNR = o;
-	protein = (int*)malloc(ProtNR * sizeof(int));
-	count += fread(protein, sizeof(int), ProtNR, F);
-	ProtNR = 895;
-	int extendedProtNr = 0;
-	if (ProtNR % 256 != 0)
+	else
 	{
-		for (int i = ProtNR;; ++i)
+		int z = 5*nNZ;
+		z = (z/0x100000+1)*0x100000;
+		NZbuffsize = z;
+	}
+
+	cudaMalloc(&nrNZ, 3*sizeof(int));
+	cudaMalloc(&curr_NonZero_sij, NZbuffsize*sizeof(float));
+	cudaMalloc(&curr_NonZero_tij, NZbuffsize*sizeof(int));
+	cudaMalloc(&curr_NonZero_col, NZbuffsize*sizeof(int));
+	cudaMalloc(&curr_nrNZinrow, nrProt*sizeof(int));
+	cudaMalloc(&curr_rowNZheads, nrProt*sizeof(int));
+
+	cudaMalloc(&future_NonZero_sij, NZbuffsize*sizeof(float));
+	cudaMalloc(&future_NonZero_col, NZbuffsize*sizeof(int));
+	cudaMalloc(&future_nrNZinrow, nrProt*sizeof(int));
+	cudaMalloc(&future_rowNZheads, nrProt*sizeof(int));
+
+	cudaMalloc(&rowSum, nrProt*sizeof(float));
+	cudaMalloc(&fleto_matyi, KETSZAZOTVENHAT*nrProt*sizeof(float)); // LE KELL NULLAZNI!!!!
+
+	float* init_sij = (float*)malloc(NZbuffsize*sizeof(float));
+	int* init_col = (int*)malloc(NZbuffsize*sizeof(int));
+	int* init_nrNZinrow = (int*)malloc(nrProt*sizeof(int));
+	int* init_rowNZheads = (int*)malloc(nrProt*sizeof(int));
+	init_nrNZ = (int*)calloc(3,sizeof(int));
+
+	init_nrNZ[2] = nrProt;
+
+	int index = 0;
+	int row=0;
+	int count = 0;
+	
+	init_rowNZheads[row]=0;
+	while (!feof(Fnz))
+	{
+		count = fread(nzBuffer, sizeof(__int64), 0x40000, Fnz);
+
+		for (int index=0; index<count; ++index)
 		{
-			if (i % 256 == 0)
+			int nzrow = nzBuffer[index] / 0x10000000000;
+			int nzcol = (nzBuffer[index] / 0x10000) % 0x1000000;
+			int nzval = nzBuffer[index] % 0x10000;
+
+			if (nzrow != row)
 			{
-				extendedProtNr = i;
-				break;
+				init_nrNZinrow[row] = init_nrNZ[1] - init_rowNZheads[row];
+				++row;
+				init_rowNZheads[row] = init_nrNZ[1];
+			}
+			if (nzrow == row)
+			{
+				init_sij[init_nrNZ[1]] = nzval;
+				init_col[init_nrNZ[1]] = nzcol;
+				++init_nrNZ;
 			}
 		}
+		init_nrNZinrow[row] = init_nrNZ[1] - init_rowNZheads[row];
 	}
-	else extendedProtNr = ProtNR;
+	fclose(Fnz);
+	printf("Nonzero elements loaded: %d\n",init_nrNZ[1]);
 
-	cout << count << endl;
-	count = 0;
-	//hA = (float**)malloc(ProtNR*sizeof(float*));
-	hA = new float[extendedProtNr*extendedProtNr];// int prot = ProtNR*ProtNR;
-	count += fread(hA, sizeof(float), ProtNR*ProtNR, F);
-
-	if (count < ProtNR*ProtNR)
+	for (int i=0; i<extra; ++i)
 	{
-		cout << "Matrix loading failed.";
+		future_NonZero_sij[init_nrNZ[1]] = 1;
+		future_NonZero_col[init_nrNZ[1]] = nrProt - extra + i;
+		future_nrNZinrow[nrProt - extra + i] = 1;
+		future_rowNZheads[nrProt - extra + i] = init_nrNZ[1];
+		init_nrNZ[1]++;
 	}
-	for (int nr = ProtNR*ProtNR; nr < extendedProtNr*extendedProtNr; nr++)
+
+	cudaMemcpy(future_NonZero_sij, init_sij, init_nrNZ[1]*sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(future_NonZero_col, init_col, init_nrNZ[1]*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(future_nrNZinrow, init_nrNZinrow, nrProt*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(future_rowNZheads, init_rowNZheads, nrProt*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(nrNZ, init_nrNZ, 3*sizeof(int), cudaMemcpyHostToDevice);
+
+	free( init_sij );
+	free( init_col );
+	free( init_nrNZinrow );
+	free( init_rowNZheads );
+	
+	Tiempo = (int*)malloc(sizeof(int)*1000);
+	nzStat = (int*)malloc(sizeof(int)*1000);
+}
+
+__global__ void gpu_normalize_future()
+{
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+	float sum = 0;
+
+	int index = future_rowNZheads[row];
+	int count = future_nrNZinrow[row];
+
+	for (int i=0; i<count; i++)
 	{
-		if (nr % (extendedProtNr+1) == 0)
-			hA[nr] = 1.0f;
+		sum += future_NonZero_sij[index];
+		++index;
+	}
+
+	index = future_rowNZheads[row];
+	for (int i=0; i<count; i++)
+	{
+		future_NonZero_sij[index] /= sum;
+		curr_NonZero_tij[index] = -1;
+		++index;
+	}
+}
+
+__global__ void gpu_normalize_curr()
+{
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+	float sum = 0;
+
+	int index = curr_rowNZheads[row];
+	int count = curr_nrNZinrow[row];
+
+	for (int i=0; i<count; i++)
+	{
+		sum += curr_NonZero_sij[index];
+		++index;
+	}
+
+	index = curr_rowNZheads[row];
+	for (int i=0; i<count; i++)
+	{
+		curr_NonZero_sij[index] /= sum;
+		++index;
+	}
+}
+
+
+
+__global__ void gpu_up_symmetrize()
+{
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+	float newVal = 0;
+
+	int index = curr_rowNZheads[row];
+	int count = curr_nrNZinrow[row];
+
+	for (int i=0; i<count; i++) 
+		if(row < curr_NonZero_col[index])
+		{
+			int col = curr_NonZero_col[index];
+			
+			int index2 = curr_rowNZheads[col];
+			int count2 = index2 + curr_nrNZinrow[col];
+			int done = 0;
+			do
+			{
+				if (curr_NonZero_col[index2] == row)
+				{
+					// itt szimmetrizelunk
+					newVal = sqrt(curr_NonZero_sij[index] * curr_NonZero_sij[index2]);
+					if (newVal < 0.001) newVal = 0.0;
+					curr_NonZero_sij[index] = newVal;
+					curr_NonZero_sij[index2] = newVal;
+					curr_NonZero_tij[index] = index2;
+					curr_NonZero_tij[index2] = index;
+					++done;
+				}
+				++index2;
+			}
+			while (done==0 && curr_NonZero_col[index2] < col && index2<count2);
+			if (done==0)
+				curr_NonZero_sij[index] = 0;
+			++index;
+		}
+}
+
+__global__ void gpu_down_symmetrize()
+{
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+	int col;
+	float newVal = 0;
+
+	int start = curr_rowNZheads[row];
+	int count = curr_nrNZinrow[row];
+	int last = start + count;
+
+	for (int i=start; i<last; i++) 
+		if(row > curr_NonZero_col[i])
+		{
+			col = curr_NonZero_col[i];
+			if (curr_NonZero_tij[i] < 0)  
+				curr_NonZero_sij[i]=0;
+			else
+			{
+				newVal = sqrt(curr_NonZero_sij[i] * curr_NonZero_sij[curr_NonZero_tij[i]]);
+				if (newVal < 0.001) newVal = 0.0;
+				curr_NonZero_sij[i] = newVal;
+				curr_NonZero_sij[curr_NonZero_tij[i]] = newVal;
+			}
+		}
+}
+
+__global__ void gpu_killzeros()
+{
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+
+	int start = curr_rowNZheads[row];
+	int count = curr_nrNZinrow[row];
+	int last = start + count;
+	int index = start;
+
+	for (int i=start; i<last; i++) 
+	{
+		if (curr_NonZero_sij[i]>0)
+		{
+			if (index<i)
+			{
+				curr_NonZero_sij[index] = curr_NonZero_sij[i];
+				curr_NonZero_col[index] = curr_NonZero_col[i];
+			}
+			++index;
+		}
+	}
+	curr_nrNZinrow[row] = index-start;
+}
+
+
+__global__ void gpu_expand()
+{
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
+	int thr = threadIdx.x;
+	int fleto_offset = nrNZ[2] * thr;
+
+	int start = curr_rowNZheads[row];
+	int count = curr_nrNZinrow[row];
+	int last = start + count;
+	for (int i=start; i<last; i++) 
+	{
+		float w = curr_NonZero_sij[i];
+		int col = curr_NonZero_col[i];
+
+		int start2 = curr_rowNZheads[col];
+		int count2 = curr_nrNZinrow[col];
+		int last2 = start2 + count2;
+		for (int j=start; j<last; j++) 
+		{
+			fleto_matyi[fleto_offset+curr_NonZero_col[j]] += w * curr_NonZero_sij[j];
+		}
+	}	
+
+	float sum = 0;
+	int db = 0;
+	for (int i=0; i<nrNZ[2]; ++i) 
+		sum += fleto_matyi[fleto_offset+i];
+	for (int i=0; i<nrNZ[2]; ++i) 
+	{
+		float w = fleto_matyi[fleto_offset+i]/sum;
+		if (w > 0.0005f) 
+		{
+			++db;
+			fleto_matyi[fleto_offset+i] = w;
+		}
 		else
-			hA[nr] = 0.0f;
-
+			fleto_matyi[fleto_offset+i] = 0;
 	}
-	
-	
-}
-void filecreator(string filename, float *hA)
-{
 
-	ofstream myfile;
-	myfile.open(filename);
-	for (int i = 0; i < 1024 * 1024; ++i)
+	future_nrNZinrow[row] = db;
+	// exlcude all other threads
+	future_rowNZheads[row] = nrNZ[1];
+	nrNZ[1] += db;
+	// endof
+	int index = future_rowNZheads[row];
+	for (int i=0; i<nrNZ[2]; ++i)
 	{
-		if (i % 1024 == 0) myfile << "\n";
-		myfile << hA[i] << " ";
+		float w = fleto_matyi[fleto_offset+i];
+		if (w>0)
+		{
+			future_NonZero_sij[index] = w;
+			future_NonZero_col[index] = i;
+			++index;
+			fleto_matyi[fleto_offset+i] = 0;
+		}
 	}
-	myfile.close();
+
+
+
 }
-int main(int argc, char *argv[])
+
+__global__ void gpu_inflate()
 {
-	int N;
-	string filename = "";
-	int q = 4;
-	N = q*BLOCK_SIZE;
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	float time;
-	cout << "Matrix size: " << N << "x" << N << endl;
+	float infRate = 1.5;
+	int row = blockIdx.x*blockDim.x + threadIdx.x;
 
-	// Allocate memory on the host
-	float *hC;
+	int index = future_rowNZheads[row];
+	int count = future_nrNZinrow[row];
 
-	LoadProteinMatrix("1024.pm");
-	int size = N*N*sizeof(float);    // Size of the memory in bytes
-	float *dA, *dC;
+	for (int i=0; i<count; i++)
+	{
+		future_NonZero_sij[index] = pow(future_NonZero_sij[index],infRate);
+		++index;
+	}
+}
 
-	dim3 inf_b(16 * q, 16 * q);
-	dim3 inf_t(16, 16);
-	dim3 norm_b(q, 1);
-	dim3 norm_t(256, 1);
 
-	int count = 50;
-	
-	cudaEventRecord(start, 0);
-	//	filecreator("in.txt", hA);
-	cudaSetDevice(0);
-	/*
-	cudaDeviceProp prop;
-	cudaGetDeviceProperties(&prop,0);
-	cout<<prop.name<<endl;
-	cout << "Max threads/block"<<endl;
-	cout <<prop.maxThreadsPerBlock<<endl;
-	cout << "Processor Count"<<endl;
-	cout <<prop.multiProcessorCount<<endl;
-	cout << "maxGridSize"<<endl;
-	cout <<prop.maxGridSize[0]<<endl;
-	cout <<prop.maxGridSize[1]<<endl;
-	cout <<prop.maxGridSize[2]<<endl;
-	cout <<prop.maxGridSize[3]<<endl;
-	cout <<"Compute capability: "<<endl;
-	cout <<prop.major<<" - "<<prop.minor<<endl;
-	*/
+void done()
+{
+	free(curr_NonZero_sij);
+	free(curr_NonZero_tij);
+	free(curr_NonZero_col);
+	free(curr_nrNZinrow);
+	free(curr_rowNZheads);
+	free(future_NonZero_sij);
+//	free(future_NonZero_tij);
+	free(future_NonZero_col);
+	free(future_nrNZinrow);
+	free(future_rowNZheads);
+	free(rowSum);
+	free(fleto_matyi);
+}
 
-	// Allocate memory on the device
-	
-	HANDLE_ERROR(cudaMalloc(&dA, size));
-	HANDLE_ERROR(cudaMalloc(&dC, size));
-	// Copy matrices from the host to device
-	HANDLE_ERROR(cudaMemcpy(dA, hA, size, cudaMemcpyHostToDevice));
+int* makeOutput(int nrCycles)
+{
+	int* res = (int*)malloc(sizeof(int)*nrProt);
+	int count = 0;
+	int nrClu = 0;
+	int largest = 0;
+	int cluSize;
+	int* clusters = (int*)malloc(sizeof(int)*nrProt);
+	int* oldBuff = (int*)malloc(sizeof(int)*nrProt);
+	int* newBuff = (int*)malloc(sizeof(int)*nrProt);
+	int nrOld, nrNew;
+	for (int i=0; i<nrProt; ++i) clusters[i]=-1;
 
-	HANDLE_ERROR(cudaFree(dA));
-	HANDLE_ERROR(cudaMalloc(&dA, size));
-	HANDLE_ERROR(cudaMemcpy(dA, hA, size, cudaMemcpyHostToDevice));
-	HANDLE_ERROR(cudaMemcpy(dC, hA, size, cudaMemcpyHostToDevice));
-	
+	while (count<nrProt)
+	{
+
+		int o = 0;
+		while (clusters[o]>=0) ++o;
+
+		oldBuff[0] = o;
+		nrOld = 1;
+		cluSize = 1;
+
+		clusters[o] = nrClu;
+		res[count] = -o;
+		++count;
+
+		while (nrOld>0)
+		{
+			nrNew = 0;
+			for (int old = 0; old<nrOld; ++old)
+			{
+				for (int j=0; j<future_nrNZinrow[oldBuff[old]]; ++j) 
+				{
+					int pos = future_rowNZheads[oldBuff[old]]+j;
+					if (future_NonZero_sij[pos]>0 && clusters[future_NonZero_col[pos]]<0)
+					{
+						clusters[future_NonZero_col[pos]] = nrClu;
+						res[count] = future_NonZero_col[pos];
+						++count;
+						++cluSize;
+						newBuff[nrNew++] = future_NonZero_col[pos];
+					}
+				}
+			}
+			nrOld = nrNew;
+			for (int j=0; j<nrNew; ++j) oldBuff[j] = newBuff[j];	
+		}		
+		if (cluSize > largest) largest = cluSize;
+		++nrClu;
+	}
+	free(oldBuff);
+	free(newBuff);
+	free(clusters);
+	printf("Largest cluster contains %d items.\n", largest);
+
+	int sumAll = 0;
+	for (int o=0; o<nrCycles; ++o) 
+	{
+		sumAll += Tiempo[o];
+	}
+
+	printf("Total runtime: %d msec \n",sumAll);
+	printf("Average runtime pre iteration: %d msec \n",sumAll/nrCycles);
+	printf("When the Checksum stabilizes, there's no need for further iterations. \n");
+
+	count = 0;
+	FILE* F = fopen("result.txt","wt");
+	fprintf(F,"[");
 	do
 	{
-		count--;
+		if (res[count]<0) fprintf(F," ]\n[");
+		fprintf(F," %d",abs(res[count++]));
+	}
+	while (count<nrProt);
+	fprintf(F," ]\n");
+	fclose(F);
 
-		inflate2 << <inf_b, inf_t >> >(N, dA);
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		normalize2 << <norm_b, norm_t >> >(N, dA);
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		symmetrize2 << <inf_b, inf_t >> >(N, dA);
-		
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		normalize2 << <norm_b, norm_t >> >(N, dA);
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		symmetrize2 << <inf_b, inf_t >> >(N, dA);
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		
-		normalize2 << <norm_b, norm_t >> >(N, dA);
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		expand << <inf_b, inf_t >> >(dA, dC, N);
-		HANDLE_ERROR(cudaDeviceSynchronize());
-		HANDLE_ERROR(cudaMemcpy(dA, dC, size, cudaMemcpyDeviceToDevice));
-		/*writer(N,C,dA,size);
-		cout <<"in cikle:";
-		cin>>m;
-		if (m==0) break;*///string str;          //The string
-		//ostringstream temp;  //temp as in temporary
-		//temp << 50 - count;
-		//str = temp.str();
-		//HANDLE_ERROR(cudaMemcpy(hA, dA, size, cudaMemcpyDeviceToHost));
-		//filename = str;
-		//filename += ".txt";
-		//filecreator(filename, hA);
-	} while (count >= 0);
-	//writer(N,C,dA,size);
-	HANDLE_ERROR(cudaEventRecord(stop, 0)); // Trigger Stop event
-	HANDLE_ERROR(cudaEventSynchronize(stop)); // Sync events (BLOCKS till last (stop inthis case) has been recorded!)
-	float elapsedTime = 0.0f; // Initialize elapsedTime;
-	HANDLE_ERROR(cudaEventElapsedTime(&elapsedTime, start, stop));
-	printf("Execution Time: %f millisecond\n", elapsedTime); // Print Elapsedtime
-
-	// Now copy the GPU result back to CPU
-	//    cudaDeviceSynchronize();
-
-	HANDLE_ERROR(cudaFree(dA));
-
-	HANDLE_ERROR(cudaFree(dC));
-	return 0;
+	return res;
 }
 
+
+int* run(int q, int nrCycles = 50)
+{
+	int zero = 0;
+	dim3 block(q, 1);
+	dim3 thread(256, 1);
+	gpu_normalize_future<<<block, thread>>>();
+	int MAXCYCLES = nrCycles;
+	if (MAXCYCLES<20) MAXCYCLES = 20;
+	if (MAXCYCLES>999) MAXCYCLES = 999;
+	int cycle;
+	
+	
+	for (cycle=0; cycle<MAXCYCLES; ++cycle)
+	{
+		startTime();
+    	gpu_inflate <<<block, thread>>>();
+		gpu_normalize_future <<<block, thread>>>();
+		gpu_up_symmetrize <<<block, thread>>>();
+		gpu_normalize_curr <<<block, thread>>>();
+		gpu_down_symmetrize <<<block, thread>>>();
+		gpu_normalize_curr <<<block, thread>>>();
+		
+		init_nrNZ[1] = 0;
+		cudaMemcpy(nrNZ, init_nrNZ, 3*sizeof(int), cudaMemcpyHostToDevice);
+
+		gpu_expand<<<block, thread>>>();
+
+		Tiempo[cycle] = endTime();
+		//nzStat[cycle] = future_nrNZ;
+
+		//float sqSum = 0.0f;
+		//for (int i=0; i<future_nrNZ; ++i) sqSum+=future_NonZero_sij[i]*future_NonZero_sij[i];
+
+		printf("%d msec in cycle %d --- \n", Tiempo[cycle], cycle+1);
+	}
+
+	int* reketye = makeOutput(cycle);
+	done();
+	return reketye;
+}
+
+
+
+void main()
+{
+	//This value defines the size of buffers used by the algorithm.
+	//If the amount of nonzeros in the matrix exceeds the buffer size, the execution crashes.
+	//Automatic estimation is used when MEGAITEMS is set to 0.
+	const int MEGAITEMS = 0;
+	
+	//Markov clustering parameters. 
+	//Inflation rate. Should be larger than 1.3
+	const float err = 1.5f;
+
+	//Nonzeros below this threshold are rounded to zero. Don't use below 0.001
+	const float eps = 0.001f;
+
+	//an input file with 10k proteins
+	FILE* inpF = fopen("d:/blast.mtx","rb");
+
+	int head[3];
+	fread(&head,sizeof(int),3,inpF);
+	printf("Header data: \n  %d proteins, \n  %d families (ground truth), \n  %d expected nonzeros.\n\n",head[0],head[1],head[2]);
+	
+	int q = (head[0]+KETSZAZOTVENHAT-1)/KETSZAZOTVENHAT;
+
+	// if ground truth is not available, head[1] should be 0
+	if (head[1]>0)
+	{
+		Leaf* leafBuffer = (Leaf*)malloc(sizeof(Leaf)*head[1]);
+		fread(leafBuffer,sizeof(Leaf),head[1],inpF);
+		free(leafBuffer);
+	}
+	// input file is open and the next byte to read is the record of the first nonzero in the input matrix
+
+	printf("Executing Markov clustering, parameters: eps = %.6f; r=%.2f\n",eps,err);
+
+	initialize(head[0],head[2],inpF,err,eps,MEGAITEMS);
+
+	//you can command the number of loops performed. 50 is the default.
+	int* output = run(q /* 60 */);
+
+	_getch();
+}
