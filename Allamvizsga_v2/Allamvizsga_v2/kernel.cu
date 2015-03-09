@@ -547,7 +547,7 @@ int* run(int q, int nrCycles = 50)
 
 
 
-void main()
+int main()
 {
 	//This value defines the size of buffers used by the algorithm.
 	//If the amount of nonzeros in the matrix exceeds the buffer size, the execution crashes.
@@ -586,5 +586,5 @@ void main()
 	//you can command the number of loops performed. 50 is the default.
 	int* output = run(q /* 60 */);
 
-	_getch();
+	return 0;
 }
