@@ -1,3 +1,6 @@
+#include <cuda.h>
+#include <device_functions.h>
+#include <cuda_runtime_api.h>
 #include "windows.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
@@ -5,6 +8,7 @@
 #include <conio.h>
 #include <stdlib.h>
 #include "math.h"
+#include <algorithm>
 
 //#include "sslc.h"
 const int KETSZAZOTVENHAT = 256;
@@ -93,107 +97,10 @@ int endTime()
 
 void initialize(int nProt, int nNZ, FILE* Fnz, float err, float epsilon, int mbSize)
 {
-	__int64* nzBuffer = (__int64*)malloc(sizeof(__int64)* 0x40000);
 
-	nrProt = nProt;
-	int extra = (KETSZAZOTVENHAT - (nrProt % KETSZAZOTVENHAT)) % KETSZAZOTVENHAT;
-	nrProt += extra;
-	infRate = err;
-	eps = epsilon;
-	int NZbuffsize;
-
-	if (mbSize>0)
-	{
-		NZbuffsize = mbSize * 0x100000;
-	}
-	else
-	{
-		int z = 5*nNZ;
-		z = (z/0x100000+1)*0x100000;
-		NZbuffsize = z;
-	}
-
-	cudaMalloc(&nrNZ, 3*sizeof(int));
-	cudaMalloc(&curr_NonZero_sij, NZbuffsize*sizeof(float));
-	cudaMalloc(&curr_NonZero_tij, NZbuffsize*sizeof(int));
-	cudaMalloc(&curr_NonZero_col, NZbuffsize*sizeof(int));
-	cudaMalloc(&curr_nrNZinrow, nrProt*sizeof(int));
-	cudaMalloc(&curr_rowNZheads, nrProt*sizeof(int));
-
-	cudaMalloc(&future_NonZero_sij, NZbuffsize*sizeof(float));
-	cudaMalloc(&future_NonZero_col, NZbuffsize*sizeof(int));
-	cudaMalloc(&future_nrNZinrow, nrProt*sizeof(int));
-	cudaMalloc(&future_rowNZheads, nrProt*sizeof(int));
-
-	cudaMalloc(&rowSum, nrProt*sizeof(float));
-	cudaMalloc(&fleto_matyi, KETSZAZOTVENHAT*nrProt*sizeof(float)); // LE KELL NULLAZNI!!!!
-
-	float* init_sij = (float*)malloc(NZbuffsize*sizeof(float));
-	int* init_col = (int*)malloc(NZbuffsize*sizeof(int));
-	int* init_nrNZinrow = (int*)malloc(nrProt*sizeof(int));
-	int* init_rowNZheads = (int*)malloc(nrProt*sizeof(int));
-	init_nrNZ = (int*)calloc(3,sizeof(int));
-
-	init_nrNZ[2] = nrProt;
-
-	int index = 0;
-	int row=0;
-	int count = 0;
-	
-	init_rowNZheads[row]=0;
-	while (!feof(Fnz))
-	{
-		count = fread(nzBuffer, sizeof(__int64), 0x40000, Fnz);
-
-		for (int index=0; index<count; ++index)
-		{
-			int nzrow = nzBuffer[index] / 0x10000000000;
-			int nzcol = (nzBuffer[index] / 0x10000) % 0x1000000;
-			int nzval = nzBuffer[index] % 0x10000;
-
-			if (nzrow != row)
-			{
-				init_nrNZinrow[row] = init_nrNZ[1] - init_rowNZheads[row];
-				++row;
-				init_rowNZheads[row] = init_nrNZ[1];
-			}
-			if (nzrow == row)
-			{
-				init_sij[init_nrNZ[1]] = nzval;
-				init_col[init_nrNZ[1]] = nzcol;
-				++init_nrNZ;
-			}
-		}
-		init_nrNZinrow[row] = init_nrNZ[1] - init_rowNZheads[row];
-	}
-	fclose(Fnz);
-	printf("Nonzero elements loaded: %d\n",init_nrNZ[1]);
-
-	for (int i=0; i<extra; ++i)
-	{
-		future_NonZero_sij[init_nrNZ[1]] = 1;
-		future_NonZero_col[init_nrNZ[1]] = nrProt - extra + i;
-		future_nrNZinrow[nrProt - extra + i] = 1;
-		future_rowNZheads[nrProt - extra + i] = init_nrNZ[1];
-		init_nrNZ[1]++;
-	}
-
-	cudaMemcpy(future_NonZero_sij, init_sij, init_nrNZ[1]*sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemcpy(future_NonZero_col, init_col, init_nrNZ[1]*sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(future_nrNZinrow, init_nrNZinrow, nrProt*sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(future_rowNZheads, init_rowNZheads, nrProt*sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(nrNZ, init_nrNZ, 3*sizeof(int), cudaMemcpyHostToDevice);
-
-	free( init_sij );
-	free( init_col );
-	free( init_nrNZinrow );
-	free( init_rowNZheads );
-	
-	Tiempo = (int*)malloc(sizeof(int)*1000);
-	nzStat = (int*)malloc(sizeof(int)*1000);
 }
 
-__global__ void gpu_normalize_future()
+__global__ void gpu_normalize_future(int *curr_NonZero_tij,float* future_NonZero_sij,int* future_NonZero_col,int* future_nrNZinrow,int* future_rowNZheads)
 {
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
 	float sum = 0;
@@ -216,7 +123,7 @@ __global__ void gpu_normalize_future()
 	}
 }
 
-__global__ void gpu_normalize_curr()
+__global__ void gpu_normalize_curr(float* curr_NonZero_sij,int* curr_NonZero_tij,int* curr_NonZero_col,int* curr_nrNZinrow,int* curr_rowNZheads)
 {
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
 	float sum = 0;
@@ -238,9 +145,7 @@ __global__ void gpu_normalize_curr()
 	}
 }
 
-
-
-__global__ void gpu_up_symmetrize()
+__global__ void gpu_up_symmetrize(float* curr_NonZero_sij, int* curr_NonZero_tij, int* curr_NonZero_col, int* curr_nrNZinrow, int* curr_rowNZheads)
 {
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
 	float newVal = 0;
@@ -278,7 +183,7 @@ __global__ void gpu_up_symmetrize()
 		}
 }
 
-__global__ void gpu_down_symmetrize()
+__global__ void gpu_down_symmetrize(float* curr_NonZero_sij, int* curr_NonZero_tij, int* curr_NonZero_col, int* curr_nrNZinrow, int* curr_rowNZheads)
 {
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
 	int col;
@@ -304,7 +209,7 @@ __global__ void gpu_down_symmetrize()
 		}
 }
 
-__global__ void gpu_killzeros()
+__global__ void gpu_killzeros(float* curr_NonZero_sij, int* curr_NonZero_tij, int* curr_NonZero_col, int* curr_nrNZinrow, int* curr_rowNZheads)
 {
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
 
@@ -328,8 +233,7 @@ __global__ void gpu_killzeros()
 	curr_nrNZinrow[row] = index-start;
 }
 
-
-__global__ void gpu_expand()
+__global__ void gpu_expand(float* curr_NonZero_sij, int* curr_NonZero_tij, int* curr_NonZero_col, int* curr_nrNZinrow, int* curr_rowNZheads, float * fleto_matyi, int* nrNZ, float* future_NonZero_sij,int* future_NonZero_col,int* future_nrNZinrow,int* future_rowNZheads)
 {
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
 	int thr = threadIdx.x;
@@ -371,7 +275,9 @@ __global__ void gpu_expand()
 	future_nrNZinrow[row] = db;
 	// exlcude all other threads
 	future_rowNZheads[row] = nrNZ[1];
+	__syncthreads();
 	nrNZ[1] += db;
+	__syncthreads();
 	// endof
 	int index = future_rowNZheads[row];
 	for (int i=0; i<nrNZ[2]; ++i)
@@ -390,7 +296,7 @@ __global__ void gpu_expand()
 
 }
 
-__global__ void gpu_inflate()
+__global__ void gpu_inflate(float* future_NonZero_sij, int* future_nrNZinrow, int* future_rowNZheads)
 {
 	float infRate = 1.5;
 	int row = blockIdx.x*blockDim.x + threadIdx.x;
@@ -503,47 +409,12 @@ int* makeOutput(int nrCycles)
 	return res;
 }
 
-
-int* run(int q, int nrCycles = 50)
-{
-	int zero = 0;
-	dim3 block(q, 1);
-	dim3 thread(256, 1);
-	gpu_normalize_future<<<block, thread>>>();
-	int MAXCYCLES = nrCycles;
-	if (MAXCYCLES<20) MAXCYCLES = 20;
-	if (MAXCYCLES>999) MAXCYCLES = 999;
-	int cycle;
-	
-	
-	for (cycle=0; cycle<MAXCYCLES; ++cycle)
-	{
-		startTime();
-    	gpu_inflate <<<block, thread>>>();
-		gpu_normalize_future <<<block, thread>>>();
-		gpu_up_symmetrize <<<block, thread>>>();
-		gpu_normalize_curr <<<block, thread>>>();
-		gpu_down_symmetrize <<<block, thread>>>();
-		gpu_normalize_curr <<<block, thread>>>();
-		
-		init_nrNZ[1] = 0;
-		cudaMemcpy(nrNZ, init_nrNZ, 3*sizeof(int), cudaMemcpyHostToDevice);
-
-		gpu_expand<<<block, thread>>>();
-
-		Tiempo[cycle] = endTime();
-		//nzStat[cycle] = future_nrNZ;
-
-		//float sqSum = 0.0f;
-		//for (int i=0; i<future_nrNZ; ++i) sqSum+=future_NonZero_sij[i]*future_NonZero_sij[i];
-
-		printf("%d msec in cycle %d --- \n", Tiempo[cycle], cycle+1);
-	}
-
-	int* reketye = makeOutput(cycle);
-	done();
-	return reketye;
-}
+//
+//int* run(int q, int nrCycles = 50)
+//{
+//	
+//	return reketye;
+//}
 
 
 
@@ -562,7 +433,7 @@ int main()
 	const float eps = 0.001f;
 
 	//an input file with 10k proteins
-	FILE* inpF = fopen("d:/blast.mtx","rb");
+	FILE* inpF = fopen("C:/Users/Cuda Programming/Desktop/alomvizsga/Allamvizsga_v2/Allamvizsga_v2/blast11944.sm","rb");
 
 	int head[3];
 	fread(&head,sizeof(int),3,inpF);
@@ -580,11 +451,148 @@ int main()
 	// input file is open and the next byte to read is the record of the first nonzero in the input matrix
 
 	printf("Executing Markov clustering, parameters: eps = %.6f; r=%.2f\n",eps,err);
+	//initialize(, head[2], inpF, err, eps, MEGAITEMS);
+	__int64* nzBuffer = (__int64*)malloc(sizeof(__int64)* 0x40000);
 
-	initialize(head[0],head[2],inpF,err,eps,MEGAITEMS);
+	nrProt = head[0];
+	int nNZ= head[2];
+	FILE* Fnz = inpF; 
+		int mbSize = MEGAITEMS;
+	int extra = (KETSZAZOTVENHAT - (nrProt % KETSZAZOTVENHAT)) % KETSZAZOTVENHAT;
+	nrProt += extra;
+	infRate = err;
+
+	int NZbuffsize;
+
+	if (mbSize>0)
+	{
+		NZbuffsize = mbSize * 0x100000;
+	}
+	else
+	{
+		int z = 5 * nNZ;
+		z = (z / 0x100000 + 1) * 0x100000;
+		NZbuffsize = z;
+	}
+
+	cudaMalloc(&nrNZ, 3 * sizeof(int));
+	cudaMalloc(&curr_NonZero_sij, NZbuffsize*sizeof(float));
+	cudaMalloc(&curr_NonZero_tij, NZbuffsize*sizeof(int));
+	cudaMalloc(&curr_NonZero_col, NZbuffsize*sizeof(int));
+	cudaMalloc(&curr_nrNZinrow, nrProt*sizeof(int));
+	cudaMalloc(&curr_rowNZheads, nrProt*sizeof(int));
+
+	cudaMalloc(&future_NonZero_sij, NZbuffsize*sizeof(float));
+	cudaMalloc(&future_NonZero_col, NZbuffsize*sizeof(int));
+	cudaMalloc(&future_nrNZinrow, nrProt*sizeof(int));
+	cudaMalloc(&future_rowNZheads, nrProt*sizeof(int));
+
+	cudaMalloc(&rowSum, nrProt*sizeof(float));
+	cudaMalloc(&fleto_matyi, KETSZAZOTVENHAT*nrProt*sizeof(float)); // LE KELL NULLAZNI!!!!
+	cudaMemset(fleto_matyi, 0, KETSZAZOTVENHAT*nrProt*sizeof(float));
+	float* init_sij = (float*)malloc(NZbuffsize*sizeof(float));
+	int* init_col = (int*)malloc(NZbuffsize*sizeof(int));
+	int* init_nrNZinrow = (int*)malloc(nrProt*sizeof(int));
+	int* init_rowNZheads = (int*)malloc(nrProt*sizeof(int));
+	init_nrNZ = (int*)calloc(3, sizeof(int));
+
+	init_nrNZ[2] = nrProt;
+
+	int index = 0;
+	int row = 0;
+	int count = 0;
+
+	init_rowNZheads[row] = 0;
+	while (!feof(Fnz))
+	{
+		count = fread(nzBuffer, sizeof(__int64), 0x40000, Fnz);
+
+		for (int index = 0; index<count; ++index)
+		{
+			int nzrow = nzBuffer[index] / 0x10000000000;
+			int nzcol = (nzBuffer[index] / 0x10000) % 0x1000000;
+			int nzval = nzBuffer[index] % 0x10000;
+
+			if (nzrow != row)
+			{
+				init_nrNZinrow[row] = init_nrNZ[1] - init_rowNZheads[row];
+				++row;
+				init_rowNZheads[row] = init_nrNZ[1];
+			}
+			if (nzrow == row)
+			{
+				init_sij[init_nrNZ[1]] = nzval;
+				init_col[init_nrNZ[1]] = nzcol;
+				++init_nrNZ;
+			}
+		}
+		init_nrNZinrow[row] = init_nrNZ[1] - init_rowNZheads[row];
+	}
+	fclose(Fnz);
+	printf("Nonzero elements loaded: %d\n", init_nrNZ[1]);
+
+	for (int i = 0; i<extra; ++i)
+	{
+		future_NonZero_sij[init_nrNZ[1]] = 1;
+		future_NonZero_col[init_nrNZ[1]] = nrProt - extra + i;
+		future_nrNZinrow[nrProt - extra + i] = 1;
+		future_rowNZheads[nrProt - extra + i] = init_nrNZ[1];
+		init_nrNZ[1]++;
+	}
+
+	cudaMemcpy(future_NonZero_sij, init_sij, init_nrNZ[1] * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(future_NonZero_col, init_col, init_nrNZ[1] * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(future_nrNZinrow, init_nrNZinrow, nrProt*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(future_rowNZheads, init_rowNZheads, nrProt*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(nrNZ, init_nrNZ, 3 * sizeof(int), cudaMemcpyHostToDevice);
+
+	free(init_sij);
+	free(init_col);
+	free(init_nrNZinrow);
+	free(init_rowNZheads);
+
+	Tiempo = (int*)malloc(sizeof(int)* 1000);
+	nzStat = (int*)malloc(sizeof(int)* 1000);
 
 	//you can command the number of loops performed. 50 is the default.
-	int* output = run(q /* 60 */);
+	//int* output = run(q /* 60 */);
+	int nrCycles = 50;
+	int zero = 0;
+	dim3 block(q, 1);
+	dim3 thread(256, 1);
+	gpu_normalize_future << <block, thread >> >(curr_NonZero_tij, future_NonZero_sij,  future_NonZero_col, future_nrNZinrow, future_rowNZheads);
+	int MAXCYCLES = nrCycles;
+	if (MAXCYCLES<20) MAXCYCLES = 20;
+	if (MAXCYCLES>999) MAXCYCLES = 999;
+	int cycle;
+
+
+	for (cycle = 0; cycle<MAXCYCLES; ++cycle)
+	{
+		startTime();
+		gpu_inflate << <block, thread >> >(future_NonZero_sij,  future_nrNZinrow, future_rowNZheads);
+		gpu_normalize_future << <block, thread >> >(curr_NonZero_tij, future_NonZero_sij, future_NonZero_col,  future_nrNZinrow,future_rowNZheads);
+		gpu_up_symmetrize << <block, thread >> >(curr_NonZero_sij, curr_NonZero_tij,  curr_NonZero_col, curr_nrNZinrow, curr_rowNZheads);
+		gpu_normalize_curr << <block, thread >> >( curr_NonZero_sij,  curr_NonZero_tij,  curr_NonZero_col, curr_nrNZinrow,  curr_rowNZheads);
+		gpu_down_symmetrize << <block, thread >> >(curr_NonZero_sij, curr_NonZero_tij,  curr_NonZero_col, curr_nrNZinrow, curr_rowNZheads);
+		gpu_normalize_curr << <block, thread >> >( curr_NonZero_sij,  curr_NonZero_tij,  curr_NonZero_col,  curr_nrNZinrow,  curr_rowNZheads);
+
+		init_nrNZ[1] = 0;
+		cudaMemcpy(nrNZ, init_nrNZ, 3 * sizeof(int), cudaMemcpyHostToDevice);
+
+		gpu_expand << <block, thread >> >(curr_NonZero_sij, curr_NonZero_tij, curr_NonZero_col, curr_nrNZinrow, curr_rowNZheads, fleto_matyi, nrNZ,future_NonZero_sij, future_NonZero_col,  future_nrNZinrow,  future_rowNZheads);
+
+		Tiempo[cycle] = endTime();
+		//nzStat[cycle] = future_nrNZ;
+
+		//float sqSum = 0.0f;
+		//for (int i=0; i<future_nrNZ; ++i) sqSum+=future_NonZero_sij[i]*future_NonZero_sij[i];
+
+		printf("%d msec in cycle %d --- \n", Tiempo[cycle], cycle + 1);
+	}
+
+	int* reketye = makeOutput(cycle);
+	done();
 
 	return 0;
 }
